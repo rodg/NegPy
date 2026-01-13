@@ -17,6 +17,7 @@ Here is what actually happens to your image. We apply these steps in order, pass
 
 *   **Physical Model**: We treat the file not as a photo, but as a **radiometric measurement**. The pixel values represent how much light passed through the negative.
 *   **Inversion**: Film density is logarithmic ($D \propto \log E$), but scanners and camera sensors are linear. So we invert it to get back to the log space:
+
     $$E_{log} = \log_{10}(I_{scan})$$
     *   $I_{scan}$: Raw linear input from scanner/camera using 16-bit precision.
 *   **Bounds**: We find the floor (film base + fog) and the ceiling (densest highlight) We set those at 0.5th percentile and 99.5th percentile.
@@ -30,6 +31,7 @@ Here is what actually happens to your image. We apply these steps in order, pass
 *   **Virtual Darkroom**: This step simulates shining light through the negative onto paper.
 *   **Color Timing**: We apply subtractive filtration (CMY) to the digital negative. This is exactly like using a dichroic head on an enlarger to remove color casts.
 *   **The H&D Curve**: Paper doesn't respond linearly. We model its response using a **Logistic Sigmoid**:
+
     $$D_{print} = \frac{D_{max}}{1 + e^{-k \cdot (x - x_0)}}$$
     *   $D_{max}$: Deepest black the paper can do.
     *   $k$: Contrast grade.
@@ -39,6 +41,7 @@ Here is what actually happens to your image. We apply these steps in order, pass
     *   **Toe**: Controls how fast shadows go to pure black.
     *   **Shoulder**: Controls how highlights roll off.
 *   **Output**: Finally, we convert that print density back to light (Transmittance) for your screen:
+
     $$I_{out} = (10^{-D_{print}})^{1/\gamma}$$
     *   $I_{out}$: Final display intensity.
     *   $\gamma$: Display gamma correction (2.2).
@@ -51,12 +54,14 @@ The defaults should be somewhat neutral, but you can (and should) use the slider
 **Code**: `src.features.retouch`
 
 *   **Dust & Scratches**: We look for sharp spikes in local texture. If a pixel is way different from its neighbors (based on standard deviation), it's probably dust. We then replace it with median of it's neighbors.
+
     $$|I - \text{median}(I)| > T \cdot f(\sigma)$$
     *   $I$: Pixel intensity.
     *   $T$: Sensitivity threshold.
     *   $f(\sigma)$: Local noise estimate.
 *   **Grain Injection**: When you heal a spot, simple blurring looks fake ("plastic"). So we inject synthetic grain back into the healed area, scaled by the brightness (since grain is most visible in midtones).
 *   **Dodge & Burn**: Standard darkroom tools. We multiply the pixel intensity to simulate giving it more or less light.
+  
     $$I_{out} = I_{in} \cdot 2^{(\text{strength} \cdot \text{mask})}$$
 
 ---
@@ -67,6 +72,7 @@ The defaults should be somewhat neutral, but you can (and should) use the slider
 This mimics what lab scanners like Frontier or Noritsu do automatically.
 
 *   **Color Separation**: We use a mixing matrix to push colors apart. It mixes between a neutral identity matrix and a "calibration" matrix based on how much pop you want.
+  
     $$M = \text{normalize}((1 - \beta)I + \beta C)$$
     *   $I$: Identity matrix (neutral).
     *   $C$: Calibration matrix (vibrant).
@@ -74,12 +80,14 @@ This mimics what lab scanners like Frontier or Noritsu do automatically.
         
     We use hardcoded calibration matrix for now that should be good for most cases but later I plan to add option to set your own presets for different filmstocks/looks.
 
-*   **CLAHE**: Adaptive histogram equalization. It boosts local contrast in the luminance channel. 
+*   **CLAHE**: Adaptive histogram equalization. It boosts local contrast in the luminance channel.
+  
     $$L_{final} = (1 - \alpha) \cdot L + \alpha \cdot \text{CLAHE}(L)$$
     *   $L$: Luminance channel.
     *   $\alpha$: Blending strength.
 
 *   **Sharpening**: We sharpen just the Lightness channel ($L$) in LAB space using Unsharp Masking (USM). We apply a threshold to avoid amplifying noise.
+  
     $$L_{diff} = L - \text{GaussianBlur}(L, \sigma)$$
     $$L_{final} = L + L_{diff} \cdot \text{amount} \cdot 2.5 \quad \text{if } |L_{diff}| > 2.0$$
     *   $\sigma$: Blur radius (scale factor).
@@ -92,6 +100,7 @@ This mimics what lab scanners like Frontier or Noritsu do automatically.
 **Code**: `src.features.toning`
 
 *   **Paper Tint**: We multiply the image by a base color (e.g., warm cream for fiber paper) and tweak the D-max (density boost).
+  
     $$I_{tinted} = (I_{in} \cdot C_{base})^{\gamma_{boost}}$$
     *   $I_{in}$: Input image.
     *   $C_{base}$: Paper tint RGB color.
@@ -99,12 +108,14 @@ This mimics what lab scanners like Frontier or Noritsu do automatically.
 
 *   **Chemical Toning**: We simulate toning by blending the original pixel with a tinted version based on luminance ($Y$) masks.
     *   **Selenium**: Targets the shadows (inverse squared luminance).
+      
         $$m_{sel} = S_{sel} \cdot (1 - Y)^2$$
         $$I' = I_{tinted} \cdot (1 - m_{sel}) + (I_{tinted} \cdot C_{selenium}) \cdot m_{sel}$$
         *   $Y$: Pixel Luminance.
         *   $S_{sel}$: Selenium strength.
         *   $C_{selenium}$: Selenium target color (purple/reddish).
     *   **Sepia**: Targets the midtones using a Gaussian bell curve centered at $0.6$ luminance.
+      
         $$m_{sep} = S_{sep} \cdot \exp\left(-\frac{(Y - 0.6)^2}{0.08}\right)$$
         $$I_{out} = I' \cdot (1 - m_{sep}) + (I' \cdot C_{sepia}) \cdot m_{sep}$$
         *   $S_{sep}$: Sepia strength.
