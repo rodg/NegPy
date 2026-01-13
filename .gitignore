@@ -1,0 +1,24 @@
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.idea/
+.python-version
+node_modules/
+# Electron & Packaging
+node_modules/
+dist/
+build/
+desktop/bin/
+*.spec
+.DS_Store
+build.log
+
+# user settings 
+user/
+
+# Virtual Environment
+venv/
+.venv
+
+__pycache__
+VERSION

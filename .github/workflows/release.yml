@@ -1,0 +1,123 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
+      platform:
+        description: 'Platform to build'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - windows
+          - linux
+          - macos
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        run: |
+          if [ "${{ github.event.inputs.platform }}" == "all" ]; then
+            echo 'matrix=["ubuntu-latest", "windows-latest", "macos-latest"]' >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.inputs.platform }}" == "windows" ]; then
+            echo 'matrix=["windows-latest"]' >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.inputs.platform }}" == "linux" ]; then
+            echo 'matrix=["ubuntu-latest"]' >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.inputs.platform }}" == "macos" ]; then
+            echo 'matrix=["macos-latest"]' >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    needs: setup
+    strategy:
+      matrix:
+        os: ${{ fromJSON(needs.setup.outputs.matrix) }}
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Update Version Files
+        run: |
+          echo "${{ github.event.inputs.version }}" | sed 's/^v//' > VERSION
+          npm version ${{ github.event.inputs.version }} --no-git-tag-version
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install Python Dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Install Node Dependencies
+        run: npm install
+
+      - name: Build Backend (PyInstaller)
+        run: npm run build:backend
+
+      - name: Build Electron App
+        run: npx electron-builder "--config.extraMetadata.version=${{ github.event.inputs.version }}" --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: negpy-${{ matrix.os }}-${{ github.event.inputs.version }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.AppImage
+            dist/*.deb
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-binaries
+          pattern: negpy-*
+          merge-multiple: true
+
+      - name: Display structure of downloaded files
+        run: ls -R all-binaries
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          name: NegPy ${{ github.event.inputs.version }}
+          draft: false
+          prerelease: false
+          files: |
+            all-binaries/**/*.exe
+            all-binaries/**/*.dmg
+            all-binaries/**/*.AppImage
+            all-binaries/**/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
