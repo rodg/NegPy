@@ -6,26 +6,6 @@ MYPY = $(PYTHON) -m mypy
 FLAKE8 = $(PYTHON) -m flake8
 RUFF = $(PYTHON) -m ruff
 
-# Versioning
-VERSION_FILE = VERSION
-
-# Macro to update version files
-define update_version
-	@if [ ! -z "$(VERSION)" ]; then \
-		CURRENT_VER=$$(node -p "require('./package.json').version"); \
-		if [ "$$CURRENT_VER" != "$(VERSION)" ]; then \
-			echo "Updating version from $$CURRENT_VER to $(VERSION)..."; \
-			npm version $(VERSION) --no-git-tag-version; \
-		else \
-			echo "Version is already $(VERSION), skipping npm update."; \
-		fi; \
-		echo "$(VERSION)" | sed 's/^v//' > $(VERSION_FILE); \
-	else \
-		echo "Syncing $(VERSION_FILE) from package.json..."; \
-		node -p "require('./package.json').version" > $(VERSION_FILE); \
-	fi
-endef
-
 # Default target
 .PHONY: all
 all: lint type test
@@ -55,33 +35,25 @@ format:
 	@$(RUFF) format .
 	@$(RUFF) check --fix .
 
-# Run the application (Docker)
-.PHONY: run-app
-run-app:
-	@echo "Starting NegPy via Docker..."
-	@$(PYTHON) start.py
+# Run the application locally
+.PHONY: run
+run:
+	@echo "Starting NegPy Desktop..."
+	@$(PYTHON) desktop.py
 
-.PHONY: run-app-rebuild
-run-app-rebuild:
-	@echo "Rebuilding and starting NegPy via Docker..."
-	@$(PYTHON) start.py --build
+# Build the application
+.PHONY: build
+build:
+	@echo "Building NegPy..."
+	@$(PYTHON) build.py
 
-# Build Electron application (Host OS)
-.PHONY: dist
-dist:
-	@$(call update_version)
-	@echo "Building Electron application for host OS..."
-	@start=$$(date +%s); \
-	rm -rf dist; \
-	PATH=$(CURDIR)/$(VENV)/bin:$(PATH) npm run dist; \
-	end=$$(date +%s); \
-	echo "Build took $$(($$end - $$start)) seconds"
-
-# Clean up caches
+# Clean up caches and build artifacts
 .PHONY: clean
 clean:
-	@echo "Cleaning up caches..."
+	@echo "Cleaning up..."
 	rm -rf .pytest_cache
 	rm -rf .mypy_cache
 	rm -rf .ruff_cache
+	rm -rf build
+	rm -rf dist
 	find . -type d -name "__pycache__" -exec rm -rf {} +

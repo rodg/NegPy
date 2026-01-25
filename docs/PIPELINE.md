@@ -53,16 +53,30 @@ The defaults should be somewhat neutral, but you can (and should) use the slider
 ## 4. Retouching
 **Code**: `src.features.retouch`
 
-*   **Dust & Scratches**: We look for sharp spikes in local texture. If a pixel is way different from its neighbors (based on standard deviation), it's probably dust. We then replace it with median of it's neighbors.
+This stage removes physical artifacts like dust, hairs, and scratches from the negative. We use two complementary approaches:
 
-    $$|I - \text{median}(I)| > T \cdot f(\sigma)$$
-    *   $I$: Pixel intensity.
-    *   $T$: Sensitivity threshold.
-    *   $f(\sigma)$: Local noise estimate.
-*   **Grain Injection**: When you heal a spot, simple blurring looks fake ("plastic"). So we inject synthetic grain back into the healed area, scaled by the brightness (since grain is most visible in midtones).
-*   **Dodge & Burn**: Standard darkroom tools. We multiply the pixel intensity to simulate giving it more or less light.
-  
-    $$I_{out} = I_{in} \cdot 2^{(\text{strength} \cdot \text{mask})}$$
+*   **Automatic Dust Removal**:
+    A resolution-invariant impulse detector and patching engine.
+    
+    1.  **Statistical Gating**: Uses dual-radius analysis. A local window ($3\times$ scaled) identifies luminance spikes, while a wide window ($4\times$ scaled) provides texture context. A cubic variance penalty ($w\_std^3$) aggressively raises detection thresholds in high-frequency regions (foliage, rocks) to minimize false positives.
+    2.  **Peak Integrity**: Validates candidates via a strict 3x3 Local Maximum check and a $Z > 3.0$ sigma outlier gate. A strong-signal bypass ensures saturation-limited artifacts (hairs/scratches) are captured even if they form plateaus.
+    3.  **Annular Sampling (SPS)**: Background data is reconstructed via Stochastic Perimeter Sampling. Samples are fetched from a ring strictly exterior to the artifact footprint, ensuring zero contamination from the dust luminance itself.
+    4.  **Soft Patching**: Healed regions are integrated using distance-weighted alpha blending with cubic falloff and procedural grain injection to match local noise characteristics.
+
+*   **Manual Healing (Stochastic Boundary Sampling - SBS)**:
+    When you use the Heal tool, we fill the brush area using information from its own perimeter.
+    
+    1.  **Perimeter Characterization**: The tool identifies the cleanest background luminance at the edge of the brush circle. This sets a "Perimeter-Safe" floor to prevent dark artifacts in bright areas like skies.
+    2.  **Stochastic Sampling**: For every pixel inside the brush, we sample the immediate boundary with small angular jitter:
+        $$I_{patch} = \frac{1}{3} \sum_{j=1}^{3} \text{min3x3}(P_{\theta + \Delta \theta_j})$$
+        *   $P_{\theta + \Delta \theta_j}$: Perimeter point at pixel's angle $\theta$ with random jitter $\Delta \theta$.
+        *   This reconstructs the natural grain and texture of the surrounding area without using "synthetic" noise.
+    3.  **Luminance Keying**: To preserve original details and grain within the brush, we only apply the patch to pixels that are significantly brighter than the reconstructed background:
+        $$m_{luma} = \text{smoothstep}(0.04, 0.12, I_{curr} - I_{patch})$$
+    4.  **Cumulative Patching**: Patches can be overlaid and stacked. The tool intelligently heals long hairs or scratches by basing each new patch on the current accumulated state.
+
+*   **Resolution Independence**:
+    Retouching coordinates and sizes are scaled relative to the full-resolution RAW data, ensuring that edits made on the preview translate perfectly to the high-resolution export.
 
 ---
 

@@ -1,5 +1,6 @@
 import hashlib
 import os
+from typing import Any
 import numpy as np
 from numba import njit, prange  # type: ignore
 from src.domain.types import LUMA_R, LUMA_G, LUMA_B
@@ -117,7 +118,7 @@ def _float_to_uint8_luma_jit(img: np.ndarray) -> np.ndarray:
         res = np.empty((h, w), dtype=dtype)
         for y in prange(h):
             for x in range(w):
-                v = img[y, x] * scale
+                v = img[y, x] * scale + 0.5
                 if v < 0:
                     v = 0
                 elif v > scale:
@@ -134,7 +135,7 @@ def _float_to_uint8_luma_jit(img: np.ndarray) -> np.ndarray:
                     + LUMA_G * img[y, x, 1]
                     + LUMA_B * img[y, x, 2]
                 )
-                v = lum * scale
+                v = lum * scale + 0.5
                 if v < 0:
                     v = 0
                 elif v > scale:
@@ -156,7 +157,7 @@ def _float_to_uint16_luma_jit(img: np.ndarray) -> np.ndarray:
         res = np.empty((h, w), dtype=dtype)
         for y in prange(h):
             for x in range(w):
-                v = img[y, x] * scale
+                v = img[y, x] * scale + 0.5
                 if v < 0:
                     v = 0
                 elif v > scale:
@@ -173,7 +174,7 @@ def _float_to_uint16_luma_jit(img: np.ndarray) -> np.ndarray:
                     + LUMA_G * img[y, x, 1]
                     + LUMA_B * img[y, x, 2]
                 )
-                v = lum * scale
+                v = lum * scale + 0.5
                 if v < 0:
                     v = 0
                 elif v > scale:
@@ -250,3 +251,24 @@ def calculate_file_hash(file_path: str) -> str:
 
         logger.error(f"Hash error for {file_path}: {e}")
         return f"err_{uuid.uuid4()}"
+
+
+def prepare_thumbnail(img: Any, size: int) -> Any:
+    """
+    Resizes and pads an image to a square of given size.
+    Returns a PIL.Image.
+    """
+    from PIL import Image
+
+    # Copy to avoid mutating original
+    img_copy = img.copy()
+    img_copy.thumbnail((size, size), Image.Resampling.LANCZOS)
+
+    # Create dark square background
+    square_img = Image.new("RGB", (size, size), (14, 17, 23))
+    # Center the thumbnail
+    offset_x = (size - img_copy.width) // 2
+    offset_y = (size - img_copy.height) // 2
+    square_img.paste(img_copy, (offset_x, offset_y))
+
+    return square_img

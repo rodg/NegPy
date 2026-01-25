@@ -1,11 +1,38 @@
 from dataclasses import dataclass, field, asdict
 from typing import Dict, Any, Optional
-from enum import Enum
+from enum import Enum, StrEnum
 from src.features.exposure.models import ExposureConfig
 from src.features.geometry.models import GeometryConfig
 from src.features.lab.models import LabConfig
-from src.features.retouch.models import RetouchConfig, LocalAdjustmentConfig
+from src.features.retouch.models import RetouchConfig
 from src.features.toning.models import ToningConfig
+
+
+class AspectRatio(StrEnum):
+    FREE = "Free"
+    ORIGINAL = "Original"
+    R_3_2 = "3:2"
+    R_4_3 = "4:3"
+    R_5_4 = "5:4"
+    R_6_7 = "6:7"
+    R_1_1 = "1:1"
+    R_65_24 = "65:24"
+    # Verticals
+    R_2_3 = "2:3"
+    R_3_4 = "3:4"
+    R_4_5 = "4:5"
+    R_7_6 = "7:6"
+    R_24_65 = "24:65"
+
+
+class ProcessMode(StrEnum):
+    C41 = "C41"
+    BW = "B&W"
+
+
+class ExportFormat(StrEnum):
+    JPEG = "JPEG"
+    TIFF = "TIFF"
 
 
 class ICCMode(Enum):
@@ -16,6 +43,12 @@ class ICCMode(Enum):
 class ColorSpace(Enum):
     SRGB = "sRGB"
     ADOBE_RGB = "Adobe RGB"
+    PROPHOTO = "ProPhoto RGB"
+    WIDE = "Wide Gamut RGB"
+    ACES = "ACES"
+    P3_D65 = "P3 D65"
+    REC2020 = "Rec 2020"
+    XYZ = "XYZ"
     GREYSCALE = "Greyscale"
 
 
@@ -26,10 +59,10 @@ class ExportConfig:
     """
 
     export_path: str = "export"
-    export_fmt: str = "JPEG"
-    export_color_space: str = ColorSpace.SRGB.value
-    paper_aspect_ratio: str = "Original"
-    export_print_size: float = 27.0
+    export_fmt: str = ExportFormat.JPEG
+    export_color_space: str = ColorSpace.ADOBE_RGB.value
+    paper_aspect_ratio: str = AspectRatio.ORIGINAL
+    export_print_size: float = 30.0
     export_dpi: int = 300
     export_add_border: bool = False
     export_border_size: float = 0.0
@@ -47,7 +80,7 @@ class WorkspaceConfig:
     Complete state for a single image edit.
     """
 
-    process_mode: str = "C41"
+    process_mode: str = ProcessMode.C41
     exposure: ExposureConfig = field(default_factory=ExposureConfig)
     geometry: GeometryConfig = field(default_factory=GeometryConfig)
     lab: LabConfig = field(default_factory=LabConfig)
@@ -78,25 +111,12 @@ class WorkspaceConfig:
             valid_keys = config_cls.__dataclass_fields__.keys()
             return {k: v for k, v in d.items() if k in valid_keys and v is not None}
 
-        # handle nested objects in RetouchConfig
-        retouch_data = filter_keys(RetouchConfig, data)
-        if "local_adjustments" in retouch_data:
-            raw_adjustments = retouch_data["local_adjustments"]
-            if isinstance(raw_adjustments, list):
-                deserialized = []
-                for adj in raw_adjustments:
-                    if isinstance(adj, dict):
-                        deserialized.append(LocalAdjustmentConfig(**adj))
-                    else:
-                        deserialized.append(adj)
-                retouch_data["local_adjustments"] = deserialized
-
         return cls(
-            process_mode=str(data.get("process_mode", "C41")),
+            process_mode=str(data.get("process_mode", ProcessMode.C41)),
             exposure=ExposureConfig(**filter_keys(ExposureConfig, data)),
             geometry=GeometryConfig(**filter_keys(GeometryConfig, data)),
             lab=LabConfig(**filter_keys(LabConfig, data)),
-            retouch=RetouchConfig(**retouch_data),
+            retouch=RetouchConfig(**filter_keys(RetouchConfig, data)),
             toning=ToningConfig(**filter_keys(ToningConfig, data)),
             export=ExportConfig(**filter_keys(ExportConfig, data)),
         )

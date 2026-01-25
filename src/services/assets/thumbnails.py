@@ -3,7 +3,7 @@ from typing import Optional, Any, List, Dict, Tuple
 from PIL import Image
 import rawpy
 from src.kernel.system.config import APP_CONFIG
-from src.kernel.image.logic import ensure_rgb
+from src.kernel.image.logic import ensure_rgb, prepare_thumbnail
 from src.infrastructure.loaders.factory import loader_factory
 from src.kernel.system.logging import get_logger
 
@@ -14,7 +14,7 @@ async def generate_batch_thumbnails(
     files: List[Dict[str, str]], asset_store: Any
 ) -> Dict[str, Image.Image]:
     """
-    Parallel thumbnail generation (throttled).
+    Parallel thumbnail generation.
     """
 
     # Limit concurrency to half of available cores
@@ -77,14 +77,11 @@ def get_thumbnail_worker(
                 rgb = ensure_rgb(rgb)
                 img = Image.fromarray(rgb)
 
-            # Apply orientation metadata if present
             rot = metadata.get("orientation", 0)
             if rot != 0:
                 img = img.rotate(rot * -90, expand=True)
 
-            img.thumbnail((ts, ts))
-            square_img = Image.new("RGB", (ts, ts), (14, 17, 23))
-            square_img.paste(img, ((ts - img.width) // 2, (ts - img.height) // 2))
+            square_img: Image.Image = prepare_thumbnail(img, ts)
 
             if asset_store:
                 asset_store.save_thumbnail(file_hash, square_img)
@@ -92,4 +89,28 @@ def get_thumbnail_worker(
             return square_img
     except Exception as e:
         logger.error(f"Thumbnail Error for {file_path}: {e}")
+        return None
+
+
+def get_rendered_thumbnail(
+    buffer: Any, file_hash: str, asset_store: Any = None
+) -> Optional[Image.Image]:
+    """
+    Creates a thumbnail from a rendered float32 buffer.
+    """
+    try:
+        from src.kernel.image.logic import float_to_uint8
+
+        ts = APP_CONFIG.thumbnail_size
+        u8_arr = float_to_uint8(buffer)
+        img = Image.fromarray(u8_arr)
+
+        square_img: Image.Image = prepare_thumbnail(img, ts)
+
+        if asset_store:
+            asset_store.save_thumbnail(file_hash, square_img)
+
+        return square_img
+    except Exception as e:
+        logger.error(f"Rendered Thumbnail Error: {e}")
         return None

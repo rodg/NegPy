@@ -12,9 +12,11 @@ desktop/bin/
 *.spec
 .DS_Store
 build.log
+appimagetool-x86_64.AppImage
 
 # user settings 
 user/
+debug/
 
 # Virtual Environment
 venv/
@@ -22,3 +24,4 @@ venv/
 
 __pycache__
 VERSION
+TODO.md
